@@ -1,5 +1,7 @@
+import warnings
+
 import numpy
-from tqdm import tqdm
+import tqdm
 
 
 def get_trials_info(
@@ -68,24 +70,24 @@ def get_trials_info(
     t_start_idxs = numpy.where(numpy.diff(tr_trial_bin) > 0)[0]
     t_stop_idxs = numpy.where(numpy.diff(tr_trial_bin) < 0)[0]
 
-    # discard first stop event if it comes before a start event
-    if t_stop_idxs[0] < t_start_idxs[0]:
-        print("Discarding first trial")
-        t_stop_idxs = t_stop_idxs[1:]
-
-    # discard last start event if it comes after last stop event
-    if t_start_idxs[-1] > t_stop_idxs[-1]:
-        print("Discarding last trial")
-        t_start_idxs = t_start_idxs[:-1]
-
     if len(t_start_idxs) == 0 or len(t_stop_idxs) == 0:
         message = "No trial start or stop events found in the provided traces!"
         raise ValueError(message)
 
+    # discard first stop event if it comes before a start event
+    if t_stop_idxs[0] < t_start_idxs[0]:
+        warnings.warn(message="Discarding first trial", stacklevel=2)
+        t_stop_idxs = t_stop_idxs[1:]
+
+    # discard last start event if it comes after last stop event
+    if t_start_idxs[-1] > t_stop_idxs[-1]:
+        warnings.warn(message="Discarding last trial", stacklevel=2)
+        t_start_idxs = t_start_idxs[:-1]
+
     trial_numbers = []
     trial_times = []
 
-    for t in tqdm(iterable=range(len(t_start_idxs)), desc="Parsing hex signals"):
+    for t in tqdm.tqdm(iterable=range(len(t_start_idxs)), desc="Parsing hex signals"):
         start_idx = t_start_idxs[t]
         stop_idx = t_stop_idxs[t]
 
