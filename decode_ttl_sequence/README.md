@@ -16,5 +16,5 @@ This code has been adapted from a previous [data conversion project](https://git
 Using any Python setup, install the minimal dependencies with:
 
 ```bash
-pip install numpy
+pip install numpy tqdm
 ```
