@@ -42,27 +42,29 @@ def filter_lfp(
     filter: str = "butter",
 ) -> numpy.ndarray:
     """
-    Apply a passband filter a signal. scipy.signal.butter is implemented but other filters are not.
+    Apply a passband filter to a signal.
+
+    `scipy.signal.butter` is implemented but other filters are not.
 
     Parameters
     ----------
-    lfp: numpy.array
+    lfp: numpy.ndarray
         LFP signal to be filtered.
-    sampling_rate: float, default: 1,250.0
+    sampling_rate: float, default: 1250.0
         Sampling rate of LFP signal in Hz.
         The default value was chosen from use in a previous group.
-    passband: numpy.array | str
-        The name of the bandpass filter to retrieve from the `parse_passband` helper.
-    order: int
-        number of cycles (default=4)
+    passband: str
+        The name of the canonical bandpass filter. See `parse_passband` for options.
+    order: int, default: 4
+        The order of the filter.
     filter: str, default: "butter"
         The type of filter to apply.
         Currently, only "butter" is implemented.
 
     Returns
     -------
-    filt: numpy.array
-
+    filt: numpy.ndarray
+        The filtered signal.
     """
     if filter == "butter":
         passband = parse_passband(passband)
@@ -74,15 +76,13 @@ def filter_lfp(
         raise NotImplementedError(message)
 
 
-def _next_power_of_2(x: int):
+def _next_power_of_2(x: int) -> int:
     return 1 if x == 0 else 2 ** (x - 1).bit_length()
 
 
-def hilbert_lfp(filt):
+def hilbert_lfp(filt: numpy.ndarray) -> tuple[numpy.ndarray, numpy.ndarray]:
     """
     Calculate the phase and amplitude of a filtered signal.
-
-    By default, this function uses a bridge to octave because octave is much faster at scipy.signal.hilbert transforms.
 
     Parameters
     ----------
