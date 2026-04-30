@@ -212,7 +212,7 @@ def main():
 
     # === Create NWBFile ===
     ses_label = session_start.strftime("%Y-%m-%d")
-    ses_id = f"ses-{session_start.strftime('%Y%m%dT%H%M%S')}"
+    # ses_id = f"ses-{session_start.strftime('%Y%m%dT%H%M%S')}"
 
     nwbfile = NWBFile(
         session_description=ses_label,
