@@ -9,7 +9,7 @@ due to transfer speed limitations.
 
 A symlink of the recorded video MUST be created in the target folder
 on the OTHER drive at the path
-    "F:\\BIDSData\\sub-{subject_id}\\ses-{session_id}\\video\\video{timestamp}.mkv"
+    "F:\BIDSData\sub-{subject_id}\ses-{session_id}\video\video{timestamp}.mkv"
 ONLY THEN may this script be executed. The BIDS format requires that
 external objects like videos be referenced relative to the created
 NWB file. Creating a symlink allows for a relative path on the same
@@ -25,7 +25,7 @@ Expected session folder contents (on recording drive):
     camera_timestamps.*
 
 Output NWB path:
-    F:\\BIDSData\\sub-{subject_id}\\ses-{session_id}\\
+    F:\BIDSData\sub-{subject_id}\ses-{session_id}\
         sub-{subject_id}_ses-{session_id}_ecephys+behavior.nwb
 """
 
