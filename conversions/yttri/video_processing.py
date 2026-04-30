@@ -30,37 +30,37 @@ Camera labels:
 Requirements:
     pip install pynwb dandi
 """
+
 from datetime import datetime
 from itertools import pairwise
 from pathlib import Path
 from uuid import uuid4
 
 from dateutil.tz import tzlocal
-from pynwb import NWBFile, NWBHDF5IO
+from pynwb import NWBHDF5IO, NWBFile
 from pynwb.file import Subject
 from pynwb.image import ImageSeries
-
 
 # ── CONFIG ────────────────────────────────────────────────────────────────────
 VIDEO_ROOT = Path(r"X:\hsu\EY4152_Pl6xAi32\videos")
 NWB_OUTPUT = Path(r"C:\EmberDandi\Data")
 
-SUBJECT_ID   = "EY4152"
-SPECIES      = "Mus musculus"
-SEX          = "U"
-AGE          = "P90D/"
+SUBJECT_ID = "EY4152"
+SPECIES = "Mus musculus"
+SEX = "U"
+AGE = "P90D/"
 
 EXPERIMENTER = ["Alexander Hsu"]
-LAB          = "Yttri Lab"
-INSTITUTION  = "Carnegie Mellon University"
-VIDEO_RATE   = 60.0  # frames per second
+LAB = "Yttri Lab"
+INSTITUTION = "Carnegie Mellon University"
+VIDEO_RATE = 60.0  # frames per second
 
 # Per-session expectations.  CAMERA_LABELS drives both the expected video
 # count and the DANDI-compliant filename suffix (Video<Label>.mp4).
 # Edit to reflect your actual camera rig.
 CAMERA_LABELS = ["Cam00", "Cam01", "Cam02", "Cam03"]
-VIDEOS_PER_SESSION = len(CAMERA_LABELS)          # 4
-DOUBLE_SESSION_COUNT = 2 * VIDEOS_PER_SESSION    # 8 -> split into a/b
+VIDEOS_PER_SESSION = len(CAMERA_LABELS)  # 4
+DOUBLE_SESSION_COUNT = 2 * VIDEOS_PER_SESSION  # 8 -> split into a/b
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -133,11 +133,13 @@ def discover_sessions(video_root: Path) -> list[dict]:
                     f"(expected {VIDEOS_PER_SESSION}). Skipping."
                 )
                 continue
-            sessions.append({
-                "session_id": ses_id,
-                "start_time": parse_video_timestamp(vids[0]).replace(tzinfo=tzlocal()),
-                "video_files": vids,
-            })
+            sessions.append(
+                {
+                    "session_id": ses_id,
+                    "start_time": parse_video_timestamp(vids[0]).replace(tzinfo=tzlocal()),
+                    "video_files": vids,
+                }
+            )
 
     return sessions
 
@@ -257,7 +259,7 @@ def main():
     print("Done. Next steps:")
     print(f"  dandi validate {NWB_OUTPUT}/")
     print(f"  dandi organize {NWB_OUTPUT}/ --dandiset-path ./my_dandiset/")
-    print(f"  dandi upload ./my_dandiset/")
+    print("  dandi upload ./my_dandiset/")
 
 
 if __name__ == "__main__":
