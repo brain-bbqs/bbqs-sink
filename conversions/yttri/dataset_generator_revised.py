@@ -2,13 +2,13 @@
 IMPORTANT USAGE NOTE:
 
 The established workflow is this: video + neural activity are saved
-directly to a single drive (either F or E). The NWB data is then 
-written to the OTHER connected drive due to space limitations. 
+directly to a single drive (either F or E). The NWB data is then
+written to the OTHER connected drive due to space limitations.
 No information is written to any other drives, including C or D,
 due to transfer speed limitations.
 
 A symlink of the recorded video MUST be created in the target folder
-on the OTHER drive at the path 
+on the OTHER drive at the path
 "F:\BIDSData\sub-{subject_id}\ses-{session_id}\video\video{timestamp}.mkv"
 ONLY THEN may this script be executed. The BIDS format requires that
 external objects like videos be referenced relative to the created
@@ -29,27 +29,26 @@ Output NWB path:
         sub-{subject_id}_ses-{session_id}_ecephys+behavior.nwb
 """
 
-from pynwb import NWBFile, NWBHDF5IO, TimeSeries
-from hdmf.backends.hdf5.h5_utils import H5DataIO
-from pynwb.ecephys import ElectricalSeries
-from pynwb.image import ImageSeries
-from pynwb.file import Subject
-from pynwb.epoch import TimeIntervals
+import os
+import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
+
 import numpy as np
-import os
 import pandas as pd
-import time
-import ctypes
-import sys
+from hdmf.backends.hdf5.h5_utils import H5DataIO
+from pynwb import NWBHDF5IO, NWBFile, TimeSeries
+from pynwb.ecephys import ElectricalSeries
+from pynwb.epoch import TimeIntervals
+from pynwb.file import Subject
+from pynwb.image import ImageSeries
 
 # ===========================================================================
 # CONFIG — edit these before each session
 # ===========================================================================
-SUBJECT_ID    = "EY9166"
+SUBJECT_ID = "EY9166"
 DATE_OF_BIRTH = datetime(2025, 11, 18, tzinfo=ZoneInfo("America/New_York"))
-SEX           = "M"
+SEX = "M"
 
 # Folder on the recording drive containing raw session files
 SESSION_FOLDER = r"Z:\Aden\EY9166\3_24"
@@ -61,6 +60,7 @@ BIDS_ROOT = r"G:/"
 AP_GAIN = 1000
 LFP_GAIN = 50
 # ===========================================================================
+
 
 def parse_timestamp(time_str):
     """Parse 'YYYY-MM-DDTHH_MM_SS' into individual ints."""
@@ -82,7 +82,7 @@ def parse_folder(folder_path):
         "lfp": None,
         "spike": None,
         "video": None,
-        "digital_inputs_clock": None,   # check before "digital_inputs"
+        "digital_inputs_clock": None,  # check before "digital_inputs"
         "digital_inputs": None,
         "camera_timestamps": None,
     }
@@ -109,11 +109,10 @@ def parse_folder(folder_path):
         raise FileNotFoundError(f"Missing expected files in session folder: {missing}")
 
     # Extract timestamp from video filename: video2026-03-21T15_26_22.mkv
-    video_stem = os.path.splitext(found["video"])[0]   # strip extension
-    timestamp_str = video_stem[len("video"):]           # strip leading "video"
+    video_stem = os.path.splitext(found["video"])[0]  # strip extension
+    timestamp_str = video_stem[len("video") :]  # strip leading "video"
     year, month, day, hour, minute, second = parse_timestamp(timestamp_str)
-    session_start = datetime(year, month, day, hour, minute, second,
-                             tzinfo=ZoneInfo("America/New_York"))
+    session_start = datetime(year, month, day, hour, minute, second, tzinfo=ZoneInfo("America/New_York"))
 
     paths = {k: os.path.join(folder_path, v) for k, v in found.items()}
 
@@ -133,22 +132,22 @@ def build_output_paths(bids_root, subject_id, session_start):
                     sub-{subject_id}_ses-{YYYYMMDDTHHmmss}_ecephys+behavior.nwb
     """
     ts = session_start.strftime("%Y%m%dT%H%M%S")
-    ses_id    = f"ses-{ts}"
+    ses_id = f"ses-{ts}"
     sub_label = f"sub-{subject_id}"
-    ses_dir   = os.path.join(bids_root, sub_label, ses_id)
+    ses_dir = os.path.join(bids_root, sub_label, ses_id)
     video_dir = os.path.join(ses_dir, "video")
 
     os.makedirs(ses_dir, exist_ok=True)
     os.makedirs(video_dir, exist_ok=True)
 
-    nwb_filename  = f"{sub_label}_{ses_id}_ecephys+behavior.nwb"
-    nwb_path      = os.path.join(ses_dir, nwb_filename)
+    nwb_filename = f"{sub_label}_{ses_id}_ecephys+behavior.nwb"
+    nwb_path = os.path.join(ses_dir, nwb_filename)
 
     # Symlink is expected to already exist here (see header note)
-    video_symlink = os.path.join(video_dir,
-                                 f"video{session_start.strftime('%Y-%m-%dT%H_%M_%S')}.mkv")
+    video_symlink = os.path.join(video_dir, f"video{session_start.strftime('%Y-%m-%dT%H_%M_%S')}.mkv")
 
     return nwb_path, video_symlink, ses_dir
+
 
 def create_video_symlink(source_video_path, symlink_path):
     """
@@ -160,16 +159,14 @@ def create_video_symlink(source_video_path, symlink_path):
     if os.path.islink(symlink_path) and not os.path.exists(symlink_path):
         os.remove(symlink_path)
         print("  Removed broken existing symlink.")
- 
+
     if os.path.exists(symlink_path):
         print(f"  Symlink already exists, skipping:\n    {symlink_path}")
         return
- 
+
     try:
         os.symlink(source_video_path, symlink_path)
-        print(f"  Symlink created:\n"
-              f"    {symlink_path}\n"
-              f"    -> {source_video_path}")
+        print(f"  Symlink created:\n" f"    {symlink_path}\n" f"    -> {source_video_path}")
     except OSError as e:
         raise OSError(
             f"Failed to create symlink. On Windows, symlink creation requires either:\n"
@@ -185,42 +182,37 @@ def main():
     # === Discover session files ===
     paths, session_start = parse_folder(SESSION_FOLDER)
 
-    nwb_path, video_symlink_path, ses_dir = build_output_paths(
-        BIDS_ROOT, SUBJECT_ID, session_start
-    )
+    nwb_path, video_symlink_path, ses_dir = build_output_paths(BIDS_ROOT, SUBJECT_ID, session_start)
 
     # Relative path from NWB file to symlinked video (required by DANDI)
     video_rel_path = os.path.relpath(video_symlink_path, start=ses_dir).replace("\\", "/")
 
     # === Create video symlink on output drive ===
     print("Creating video symlink...")
-    create_video_symlink(
-        source_video_path=paths["video"],
-        symlink_path=video_symlink_path
-    )
+    create_video_symlink(source_video_path=paths["video"], symlink_path=video_symlink_path)
 
     # === Recording parameters ===
-    ap_sample_rate  = 30000.0
+    ap_sample_rate = 30000.0
     lfp_sample_rate = 2500.0
     digital_clock_hz = 5e6
     basler_clock_hz = 1e9
-    n_channels_ap   = 384
-    dtype           = np.uint16
+    n_channels_ap = 384
+    dtype = np.uint16
 
     # === Load TTL CSVs ===
-    ttl_port_vals_path  = paths["digital_inputs"]
+    ttl_port_vals_path = paths["digital_inputs"]
     ttl_timestamps_path = paths["digital_inputs_clock"]
 
-    ttl_ports      = pd.read_csv(ttl_port_vals_path,  header=None)
+    ttl_ports = pd.read_csv(ttl_port_vals_path, header=None)
     ttl_timestamps = pd.read_csv(ttl_timestamps_path, header=None)
 
     ttl_port_binary = (ttl_ports[5] == " Pin5").to_numpy()
     ttl_starts = ttl_timestamps[0][ttl_port_binary].astype(float).to_numpy() / digital_clock_hz
-    ttl_ends   = ttl_timestamps[0][~ttl_port_binary].astype(float).to_numpy() / digital_clock_hz
+    ttl_ends = ttl_timestamps[0][~ttl_port_binary].astype(float).to_numpy() / digital_clock_hz
 
     # === Create NWBFile ===
     ses_label = session_start.strftime("%Y-%m-%d")
-    ses_id    = f"ses-{session_start.strftime('%Y%m%dT%H%M%S')}"
+    ses_id = f"ses-{session_start.strftime('%Y%m%dT%H%M%S')}"
 
     nwbfile = NWBFile(
         session_description=ses_label,
@@ -232,37 +224,30 @@ def main():
             species="Mus musculus",
             date_of_birth=DATE_OF_BIRTH,
             sex=SEX,
-        )
+        ),
     )
 
     # === Add device and electrode group ===
-    device = nwbfile.create_device(
-        name="Neuropixels-Probe",
-        description="Neuropixels 1.0e",
-        manufacturer="imec"
-    )
+    device = nwbfile.create_device(name="Neuropixels-Probe", description="Neuropixels 1.0e", manufacturer="imec")
     eg = nwbfile.create_electrode_group(
         name="ProbeGroup",
         description="Neuropixels Bank A (channels 0–383), spanning M1, dorsal striatum, and ventral striatum",
         device=device,
-        location="M1, dorsal striatum, ventral striatum"
+        location="M1, dorsal striatum, ventral striatum",
     )
 
     for idx in range(n_channels_ap):
         nwbfile.add_electrode(
-            id=idx, x=np.nan, y=np.nan, z=np.nan,
-            imp=np.nan, location="M1",
-            filtering="none", group=eg
+            id=idx, x=np.nan, y=np.nan, z=np.nan, imp=np.nan, location="M1", filtering="none", group=eg
         )
 
     electrode_table_region = nwbfile.create_electrode_table_region(
-        region=list(range(n_channels_ap)),
-        description="All electrodes"
+        region=list(range(n_channels_ap)), description="All electrodes"
     )
 
     # === Load raw binary data ===
     def load_binary_memmap(file_path, n_channels, dtype=np.int16):
-        n_bytes   = os.path.getsize(file_path)
+        n_bytes = os.path.getsize(file_path)
         n_samples = n_bytes // np.dtype(dtype).itemsize // n_channels
         return np.memmap(file_path, dtype=dtype, mode="r", shape=(n_samples, n_channels))
 
@@ -274,52 +259,53 @@ def main():
     lfp_data = load_binary_memmap(paths["lfp"], n_channels_ap, dtype)
     print(f"  Done | {time.time() - starting_time:.1f}s elapsed")
 
-    ap_h5  = H5DataIO(ap_data,  compression=None, chunks=(10000, ap_data.shape[1]),  link_data=True)
+    ap_h5 = H5DataIO(ap_data, compression=None, chunks=(10000, ap_data.shape[1]), link_data=True)
     lfp_h5 = H5DataIO(lfp_data, compression=None, chunks=(10000, lfp_data.shape[1]), link_data=True)
 
     ap_conversion = (1171.875 / AP_GAIN) * 1e-6
-    ap_offset     = -512 * ap_conversion
+    ap_offset = -512 * ap_conversion
 
     lfp_conversion = (1171.875 / LFP_GAIN) * 1e-6
-    lfp_offset     = -512 * lfp_conversion
+    lfp_offset = -512 * lfp_conversion
 
     # === Add ElectricalSeries ===
     print("Adding AP...")
-    nwbfile.add_acquisition(ElectricalSeries(
-        name="AP_raw",
-        data=ap_h5,
-        electrodes=electrode_table_region,
-        starting_time=0.0,
-        rate=ap_sample_rate,
-        conversion=ap_conversion,
-        offset=ap_offset
-    ))
+    nwbfile.add_acquisition(
+        ElectricalSeries(
+            name="AP_raw",
+            data=ap_h5,
+            electrodes=electrode_table_region,
+            starting_time=0.0,
+            rate=ap_sample_rate,
+            conversion=ap_conversion,
+            offset=ap_offset,
+        )
+    )
     print(f"  Done | {time.time() - starting_time:.1f}s elapsed")
 
     print("Adding LFP...")
-    nwbfile.add_acquisition(ElectricalSeries(
-        name="LFP_raw",
-        data=lfp_h5,
-        electrodes=electrode_table_region,
-        starting_time=0.0,
-        rate=lfp_sample_rate,
-        conversion=lfp_conversion,
-        offset=lfp_offset
-    ))
+    nwbfile.add_acquisition(
+        ElectricalSeries(
+            name="LFP_raw",
+            data=lfp_h5,
+            electrodes=electrode_table_region,
+            starting_time=0.0,
+            rate=lfp_sample_rate,
+            conversion=lfp_conversion,
+            offset=lfp_offset,
+        )
+    )
     print(f"  Done | {time.time() - starting_time:.1f}s elapsed")
 
     # === Add TTL pulses ===
     print("Adding TTL intervals...")
-    ttl_intervals = TimeIntervals(
-        name="ttl_pulses",
-        description="Start and stop times of TTL pulses from Port 5"
-    )
+    ttl_intervals = TimeIntervals(name="ttl_pulses", description="Start and stop times of TTL pulses from Port 5")
     for start, stop in zip(ttl_starts, ttl_ends):
         ttl_intervals.add_interval(start_time=float(start), stop_time=float(stop), tags=["TTL5"])
     nwbfile.add_time_intervals(ttl_intervals)
     print(f"  Done | {time.time() - starting_time:.1f}s elapsed")
 
-    cam_ts = pd.read_csv(paths['camera_timestamps'], header=None)
+    cam_ts = pd.read_csv(paths["camera_timestamps"], header=None)
     cam_timestamps = cam_ts.squeeze().astype(float).to_numpy()
     cam_timestamps_s = (cam_timestamps - cam_timestamps[0]) / basler_clock_hz
 
@@ -331,7 +317,7 @@ def main():
         format="external",
         starting_frame=[0],
         timestamps=cam_timestamps_s,
-        description="Behavior video from camera positioned under arena"
+        description="Behavior video from camera positioned under arena",
     )
     nwbfile.add_acquisition(video)
     print(f"  Done | {time.time() - starting_time:.1f}s elapsed")
@@ -343,7 +329,7 @@ def main():
         data=H5DataIO(clock_data, compression=None, link_data=True),
         unit="clock_ticks",
         rate=ap_sample_rate,
-        description="ONIX acquisition clock timestamps for AP samples"
+        description="ONIX acquisition clock timestamps for AP samples",
     )
     nwbfile.add_acquisition(ephys_clock)
     print(f"  Done | {time.time() - starting_time:.1f}s elapsed")

@@ -36,38 +36,36 @@ from pathlib import Path
 from uuid import uuid4
 
 from dateutil.tz import tzlocal
-from pynwb import NWBFile, NWBHDF5IO
+from pynwb import NWBHDF5IO, NWBFile
 from pynwb.file import Subject
 from pynwb.image import ImageSeries
 
-
 # ── CONFIG ────────────────────────────────────────────────────────────────────
 
-VIDEO_ROOT   = Path(r"X:\hsu\EY4152_Pl6xAi32\videos")       # parent directory containing MMDDYY folders
-NWB_OUTPUT   = Path(r"C:\EmberDandi\Data")       # where NWB files and symlinks will be written
+VIDEO_ROOT = Path(r"X:\hsu\EY4152_Pl6xAi32\videos")  # parent directory containing MMDDYY folders
+NWB_OUTPUT = Path(r"C:\EmberDandi\Data")  # where NWB files and symlinks will be written
 
-SUBJECT_ID   = "EY4152"
-SPECIES      = "Mus musculus"             # NCBI taxonomy name
-SEX          = "U"                        # M / F / U / O
-AGE          = "P90D/"                     # ISO 8601 duration
+SUBJECT_ID = "EY4152"
+SPECIES = "Mus musculus"  # NCBI taxonomy name
+SEX = "U"  # M / F / U / O
+AGE = "P90D/"  # ISO 8601 duration
 
 EXPERIMENTER = ["Alexander Hsu"]
-LAB          = "Yttri Lab"
-INSTITUTION  = "Carnegie Mellon University"
-VIDEO_RATE   = 60.0                       # frames per second
+LAB = "Yttri Lab"
+INSTITUTION = "Carnegie Mellon University"
+VIDEO_RATE = 60.0  # frames per second
 
-VIDEOS_PER_SESSION = 4                    # expected number of videos per session
+VIDEOS_PER_SESSION = 4  # expected number of videos per session
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def parse_folder_date(folder_name: str) -> datetime:
     """Parse a MMDDYY folder name into a timezone-aware datetime (midnight)."""
     try:
         return datetime.strptime(folder_name, "%m%d%y").replace(tzinfo=tzlocal())
     except ValueError:
-        raise ValueError(
-            f"Folder '{folder_name}' does not match expected MMDDYY format (e.g. 010224)."
-        )
+        raise ValueError(f"Folder '{folder_name}' does not match expected MMDDYY format (e.g. 010224).")
 
 
 def parse_video_timestamp(video_path: Path) -> datetime:
@@ -75,9 +73,7 @@ def parse_video_timestamp(video_path: Path) -> datetime:
     try:
         return datetime.strptime(video_path.stem, "%Y-%m-%d_%H-%M-%S")
     except ValueError:
-        raise ValueError(
-            f"Video '{video_path.name}' does not match expected YYYY-MM-DD_HH-MM-SS format."
-        )
+        raise ValueError(f"Video '{video_path.name}' does not match expected YYYY-MM-DD_HH-MM-SS format.")
 
 
 def split_by_largest_gap(videos: list[Path]) -> tuple[list[Path], list[Path]]:
@@ -87,8 +83,8 @@ def split_by_largest_gap(videos: list[Path]) -> tuple[list[Path], list[Path]]:
     """
     timestamps = [parse_video_timestamp(v) for v in videos]
     gaps = [b - a for a, b in pairwise(timestamps)]
-    split_after = gaps.index(max(gaps))   # index of the video just before the gap
-    return videos[:split_after + 1], videos[split_after + 1:]
+    split_after = gaps.index(max(gaps))  # index of the video just before the gap
+    return videos[: split_after + 1], videos[split_after + 1 :]
 
 
 def discover_sessions(video_root: Path) -> list[dict]:
@@ -125,16 +121,19 @@ def discover_sessions(video_root: Path) -> list[dict]:
             print(f"  Warning: '{folder.name}' has no valid .mp4 files. Skipping.")
             continue
 
-        sessions.append({
-            "session_id": folder.name,
-            "start_time": parse_video_timestamp(videos[0]).replace(tzinfo=tzlocal()),
-            "video_files": videos,
-        })
+        sessions.append(
+            {
+                "session_id": folder.name,
+                "start_time": parse_video_timestamp(videos[0]).replace(tzinfo=tzlocal()),
+                "video_files": videos,
+            }
+        )
 
     return sessions
 
 
 # ── NWB creation ──────────────────────────────────────────────────────────────
+
 
 def make_nwb(session: dict, output_dir: Path) -> Path:
     """
@@ -176,7 +175,7 @@ def make_nwb(session: dict, output_dir: Path) -> Path:
         series = ImageSeries(
             name=f"video_{i:02d}",
             description=f"Video {i} — {link.name}",
-            external_file=[link.name],    # same directory as NWB file
+            external_file=[link.name],  # same directory as NWB file
             format="external",
             starting_frame=[0],
             rate=VIDEO_RATE,
@@ -192,6 +191,7 @@ def make_nwb(session: dict, output_dir: Path) -> Path:
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
+
 
 def main():
     print(f"Scanning: {VIDEO_ROOT}\n")
@@ -212,7 +212,7 @@ def main():
     print("Done. Next steps:")
     print(f"  dandi validate {NWB_OUTPUT}/")
     print(f"  dandi organize {NWB_OUTPUT}/ --dandiset-path ./my_dandiset/")
-    print(f"  dandi upload ./my_dandiset/")
+    print("  dandi upload ./my_dandiset/")
 
 
 if __name__ == "__main__":
