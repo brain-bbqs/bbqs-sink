@@ -47,7 +47,7 @@ from neuroconv.tools.nwb_helpers import (
 
 # NeuroConv tools (not interfaces) for adding to NWB + Zarr config
 from neuroconv.tools.spikeinterface import add_recording_to_nwbfile
-from probeinterface import generate_multi_columns_probe
+import probeinterface
 from pynwb import NWBFile, TimeSeries
 from pynwb.epoch import TimeIntervals
 from pynwb.file import Subject
@@ -188,20 +188,13 @@ def create_video_symlink(source_video_path, symlink_path):
 
 def build_neuropixels_probe(num_channels=384):
     """
-    Build a Neuropixels 1.0 probe (Bank A, channels 0–383).
-    Geometry: 2 columns, 20 µm vertical pitch, staggered.
+    Load the official Neuropixels 1.0 probe from probeinterface's library
+    and wire up Bank A (channels 0–383).
     """
-    probe = generate_multi_columns_probe(
-        num_columns=2,
-        num_contact_per_column=num_channels // 2,
-        xpitch=32,
-        ypitch=20,
-        y_shift_per_column=[0, 10],
-        contact_shapes="square",
-        contact_shape_params={"width": 12},
-    )
+    probe = probeinterface.get_probe(manufacturer="imec", probe_name="neuropixels_1.0")
+    # Bank A = first 384 contacts
+    probe = probe.get_slice(np.arange(num_channels))
     probe.set_device_channel_indices(np.arange(num_channels))
-    probe.annotate(name="Neuropixels 1.0e", manufacturer="imec")
     return probe
 
 
