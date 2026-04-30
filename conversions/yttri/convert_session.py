@@ -36,6 +36,7 @@ from zoneinfo import ZoneInfo
 
 import numpy as np
 import pandas as pd
+import probeinterface
 
 # SpikeInterface for raw I/O + probe attachment
 import spikeinterface.full as si
@@ -47,7 +48,6 @@ from neuroconv.tools.nwb_helpers import (
 
 # NeuroConv tools (not interfaces) for adding to NWB + Zarr config
 from neuroconv.tools.spikeinterface import add_recording_to_nwbfile
-import probeinterface
 from pynwb import NWBFile, TimeSeries
 from pynwb.epoch import TimeIntervals
 from pynwb.file import Subject
