@@ -188,7 +188,7 @@ def build_nwb(input_file, subject_name, out_nwb, cfg):
 
     interface.add_to_nwbfile(nwbfile=nwbfile_processed, metadata=metadata)
 
-    # make a seperate ImageSeries per angle, embed video in an ImageSeries and apply lossless compression
+    # make a separate ImageSeries per angle, embed video in an ImageSeries and apply lossless compression
     video_arrays = []
     for video_path in video_paths:
         cap = cv2.VideoCapture(video_path)
