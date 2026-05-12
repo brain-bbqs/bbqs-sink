@@ -32,7 +32,7 @@ sub-XYZ/
 │   │   └── subject
 │   └── acquisition
 │       ├── digital
-│       │   └── TTL camera exposure and Triggers (TimeSeries)    
+│       │   └── TTL camera exposure and Triggers (TimeSeries)
 │       └── analog
 │          └── Thermistor and Sound (TimeSeries)
 └── sub-XYZ_ses-YYYYMMDD_processed.nwb
