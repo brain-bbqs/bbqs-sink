@@ -9,7 +9,7 @@ due to transfer speed limitations.
 
 A symlink of the recorded video MUST be created in the target folder
 on the OTHER drive at the path
-"F:\BIDSData\sub-{subject_id}\ses-{session_id}\video\video{timestamp}.mkv"
+    "F:\BIDSData\sub-{subject_id}\ses-{session_id}\video\video{timestamp}.mkv"
 ONLY THEN may this script be executed. The BIDS format requires that
 external objects like videos be referenced relative to the created
 NWB file. Creating a symlink allows for a relative path on the same
@@ -36,9 +36,19 @@ from zoneinfo import ZoneInfo
 
 import numpy as np
 import pandas as pd
+import probeinterface
+
+# SpikeInterface for raw I/O + probe attachment
+import spikeinterface.full as si
 from hdmf.backends.hdf5.h5_utils import H5DataIO
-from pynwb import NWBHDF5IO, NWBFile, TimeSeries
-from pynwb.ecephys import ElectricalSeries
+from neuroconv.tools.nwb_helpers import (
+    configure_and_write_nwbfile,
+    get_default_backend_configuration,
+)
+
+# NeuroConv tools (not interfaces) for adding to NWB + Zarr config
+from neuroconv.tools.spikeinterface import add_recording_to_nwbfile
+from pynwb import NWBFile, TimeSeries
 from pynwb.epoch import TimeIntervals
 from pynwb.file import Subject
 from pynwb.image import ImageSeries
@@ -59,6 +69,14 @@ BIDS_ROOT = r"G:/"
 # Bonsai acquisition parameters
 AP_GAIN = 1000
 LFP_GAIN = 50
+
+# === Recording parameters ===
+ap_sample_rate = 30000.0
+lfp_sample_rate = 2500.0
+digital_clock_hz = 5e6
+basler_clock_hz = 1e9
+n_channels_ap = 384
+dtype = np.uint16
 # ===========================================================================
 
 
@@ -109,8 +127,8 @@ def parse_folder(folder_path):
         raise FileNotFoundError(f"Missing expected files in session folder: {missing}")
 
     # Extract timestamp from video filename: video2026-03-21T15_26_22.mkv
-    video_stem = os.path.splitext(found["video"])[0]  # strip extension
-    timestamp_str = video_stem[len("video") :]  # strip leading "video"
+    video_stem = os.path.splitext(found["video"])[0]
+    timestamp_str = video_stem[len("video") :]
     year, month, day, hour, minute, second = parse_timestamp(timestamp_str)
     session_start = datetime(year, month, day, hour, minute, second, tzinfo=ZoneInfo("America/New_York"))
 
@@ -123,13 +141,6 @@ def build_output_paths(bids_root, subject_id, session_start):
     """
     Return the output NWB path and the expected symlinked video path,
     following DANDI/BIDS conventions.
-
-        <bids_root>/
-            sub-{subject_id}/
-                ses-{YYYYMMDDTHHmmss}/
-                    video/
-                        video{timestamp}.mkv   <- symlink created manually
-                    sub-{subject_id}_ses-{YYYYMMDDTHHmmss}_ecephys+behavior.nwb
     """
     ts = session_start.strftime("%Y%m%dT%H%M%S")
     ses_id = f"ses-{ts}"
@@ -140,10 +151,10 @@ def build_output_paths(bids_root, subject_id, session_start):
     os.makedirs(ses_dir, exist_ok=True)
     os.makedirs(video_dir, exist_ok=True)
 
-    nwb_filename = f"{sub_label}_{ses_id}_ecephys+behavior.nwb"
+    # NOTE: switched extension to .nwb.zarr to reflect Zarr backend
+    nwb_filename = f"{sub_label}_{ses_id}_ecephys+behavior.nwb.zarr"
     nwb_path = os.path.join(ses_dir, nwb_filename)
 
-    # Symlink is expected to already exist here (see header note)
     video_symlink = os.path.join(video_dir, f"video{session_start.strftime('%Y-%m-%dT%H_%M_%S')}.mkv")
 
     return nwb_path, video_symlink, ses_dir
@@ -155,7 +166,6 @@ def create_video_symlink(source_video_path, symlink_path):
     On Windows, requires either Developer Mode or admin privileges.
     Skips silently if a valid symlink already exists.
     """
-    # Remove broken symlink if present
     if os.path.islink(symlink_path) and not os.path.exists(symlink_path):
         os.remove(symlink_path)
         print("  Removed broken existing symlink.")
@@ -176,6 +186,39 @@ def create_video_symlink(source_video_path, symlink_path):
         )
 
 
+def build_neuropixels_probe(num_channels=384):
+    """
+    Load the official Neuropixels 1.0 probe from probeinterface's library
+    and wire up Bank A (channels 0–383).
+    """
+    probe = probeinterface.get_probe(manufacturer="imec", probe_name="neuropixels_1.0")
+    # Bank A = first 384 contacts
+    probe = probe.get_slice(np.arange(num_channels))
+    probe.set_device_channel_indices(np.arange(num_channels))
+    return probe
+
+
+def make_recording(file_path, sampling_frequency, num_channels, dtype, gain_to_uV):
+    """
+    Wrap a raw flat binary file as a SpikeInterface BinaryRecordingExtractor
+    and attach a Neuropixels probe.
+    """
+    rec = si.read_binary(
+        file_paths=[file_path],
+        sampling_frequency=sampling_frequency,
+        num_channels=num_channels,
+        dtype=dtype,
+        gain_to_uV=gain_to_uV,
+        offset_to_uV=-512 * gain_to_uV,
+        is_filtered=False,
+    )
+    probe = build_neuropixels_probe(num_channels=num_channels)
+    rec = rec.set_probe(probe, group_mode="by_shank")
+    # Force location to M1 for all electrodes (matches original metadata)
+    rec.set_property("brain_area", ["M1"] * num_channels)
+    return rec
+
+
 def main():
     starting_time = time.time()
 
@@ -184,35 +227,15 @@ def main():
 
     nwb_path, video_symlink_path, ses_dir = build_output_paths(BIDS_ROOT, SUBJECT_ID, session_start)
 
-    # Relative path from NWB file to symlinked video (required by DANDI)
-    video_rel_path = os.path.relpath(video_symlink_path, start=ses_dir).replace("\\", "/")
-
     # === Create video symlink on output drive ===
     print("Creating video symlink...")
     create_video_symlink(source_video_path=paths["video"], symlink_path=video_symlink_path)
 
-    # === Recording parameters ===
-    ap_sample_rate = 30000.0
-    lfp_sample_rate = 2500.0
-    digital_clock_hz = 5e6
-    basler_clock_hz = 1e9
-    n_channels_ap = 384
-    dtype = np.uint16
-
-    # === Load TTL CSVs ===
-    ttl_port_vals_path = paths["digital_inputs"]
-    ttl_timestamps_path = paths["digital_inputs_clock"]
-
-    ttl_ports = pd.read_csv(ttl_port_vals_path, header=None)
-    ttl_timestamps = pd.read_csv(ttl_timestamps_path, header=None)
-
-    ttl_port_binary = (ttl_ports[5] == " Pin5").to_numpy()
-    ttl_starts = ttl_timestamps[0][ttl_port_binary].astype(float).to_numpy() / digital_clock_hz
-    ttl_ends = ttl_timestamps[0][~ttl_port_binary].astype(float).to_numpy() / digital_clock_hz
+    # Relative path from NWB file to symlinked video (required by DANDI)
+    video_rel_path = os.path.relpath(video_symlink_path, start=ses_dir).replace("\\", "/")
 
     # === Create NWBFile ===
     ses_label = session_start.strftime("%Y-%m-%d")
-    # ses_id = f"ses-{session_start.strftime('%Y%m%dT%H%M%S')}"
 
     nwbfile = NWBFile(
         session_description=ses_label,
@@ -227,90 +250,73 @@ def main():
         ),
     )
 
-    # === Add device and electrode group ===
-    device = nwbfile.create_device(name="Neuropixels-Probe", description="Neuropixels 1.0e", manufacturer="imec")
-    eg = nwbfile.create_electrode_group(
-        name="ProbeGroup",
-        description="Neuropixels Bank A (channels 0–383), spanning M1, dorsal striatum, and ventral striatum",
-        device=device,
-        location="M1, dorsal striatum, ventral striatum",
+    # === Build SpikeInterface recordings (memory-mapped) with attached probes ===
+    ap_gain_to_uV = 1171.875 / AP_GAIN
+    lfp_gain_to_uV = 1171.875 / LFP_GAIN
+
+    print("Loading AP via SpikeInterface...")
+    ap_recording = make_recording(
+        file_path=paths["spike"],
+        sampling_frequency=ap_sample_rate,
+        num_channels=n_channels_ap,
+        dtype=dtype,
+        gain_to_uV=ap_gain_to_uV,
     )
-
-    for idx in range(n_channels_ap):
-        nwbfile.add_electrode(
-            id=idx, x=np.nan, y=np.nan, z=np.nan, imp=np.nan, location="M1", filtering="none", group=eg
-        )
-
-    electrode_table_region = nwbfile.create_electrode_table_region(
-        region=list(range(n_channels_ap)), description="All electrodes"
-    )
-
-    # === Load raw binary data ===
-    def load_binary_memmap(file_path, n_channels, dtype=np.int16):
-        n_bytes = os.path.getsize(file_path)
-        n_samples = n_bytes // np.dtype(dtype).itemsize // n_channels
-        return np.memmap(file_path, dtype=dtype, mode="r", shape=(n_samples, n_channels))
-
-    print("Loading AP...")
-    ap_data = load_binary_memmap(paths["spike"], n_channels_ap, dtype)
     print(f"  Done | {time.time() - starting_time:.1f}s elapsed")
 
-    print("Loading LFP...")
-    lfp_data = load_binary_memmap(paths["lfp"], n_channels_ap, dtype)
+    print("Loading LFP via SpikeInterface...")
+    lfp_recording = make_recording(
+        file_path=paths["lfp"],
+        sampling_frequency=lfp_sample_rate,
+        num_channels=n_channels_ap,
+        dtype=dtype,
+        gain_to_uV=lfp_gain_to_uV,
+    )
     print(f"  Done | {time.time() - starting_time:.1f}s elapsed")
 
-    ap_h5 = H5DataIO(ap_data, compression=None, chunks=(10000, ap_data.shape[1]), link_data=True)
-    lfp_h5 = H5DataIO(lfp_data, compression=None, chunks=(10000, lfp_data.shape[1]), link_data=True)
-
-    ap_conversion = (1171.875 / AP_GAIN) * 1e-6
-    ap_offset = -512 * ap_conversion
-
-    lfp_conversion = (1171.875 / LFP_GAIN) * 1e-6
-    lfp_offset = -512 * lfp_conversion
-
-    # === Add ElectricalSeries ===
+    # === Add ElectricalSeries via NeuroConv tools ===
     print("Adding AP...")
-    nwbfile.add_acquisition(
-        ElectricalSeries(
-            name="AP_raw",
-            data=ap_h5,
-            electrodes=electrode_table_region,
-            starting_time=0.0,
-            rate=ap_sample_rate,
-            conversion=ap_conversion,
-            offset=ap_offset,
-        )
+    add_recording_to_nwbfile(
+        recording=ap_recording,
+        nwbfile=nwbfile,
+        es_key="ElectricalSeriesAP",
+        metadata={
+            "Ecephys": {
+                "ElectricalSeriesAP": {
+                    "name": "AP_raw",
+                    "description": "Raw AP-band Neuropixels data",
+                }
+            }
+        },
+        write_as="raw",
+        iterator_type="v2",  # uses HDMF data chunk iterator
     )
     print(f"  Done | {time.time() - starting_time:.1f}s elapsed")
 
     print("Adding LFP...")
-    nwbfile.add_acquisition(
-        ElectricalSeries(
-            name="LFP_raw",
-            data=lfp_h5,
-            electrodes=electrode_table_region,
-            starting_time=0.0,
-            rate=lfp_sample_rate,
-            conversion=lfp_conversion,
-            offset=lfp_offset,
-        )
+    add_recording_to_nwbfile(
+        recording=lfp_recording,
+        nwbfile=nwbfile,
+        es_key="ElectricalSeriesLFP",
+        metadata={
+            "Ecephys": {
+                "ElectricalSeriesLFP": {
+                    "name": "LFP_raw",
+                    "description": "Raw LFP-band Neuropixels data",
+                }
+            }
+        },
+        write_as="raw",
+        iterator_type="v2",
     )
     print(f"  Done | {time.time() - starting_time:.1f}s elapsed")
 
-    # === Add TTL pulses ===
-    print("Adding TTL intervals...")
-    ttl_intervals = TimeIntervals(name="ttl_pulses", description="Start and stop times of TTL pulses from Port 5")
-    for start, stop in zip(ttl_starts, ttl_ends):
-        ttl_intervals.add_interval(start_time=float(start), stop_time=float(stop), tags=["TTL5"])
-    nwbfile.add_time_intervals(ttl_intervals)
-    print(f"  Done | {time.time() - starting_time:.1f}s elapsed")
-
+    # === Add video ===
+    print("Adding video...")
     cam_ts = pd.read_csv(paths["camera_timestamps"], header=None)
     cam_timestamps = cam_ts.squeeze().astype(float).to_numpy()
     cam_timestamps_s = (cam_timestamps - cam_timestamps[0]) / basler_clock_hz
 
-    # === Add video ===
-    print("Adding video...")
     video = ImageSeries(
         name="BehaviorVideo",
         external_file=[video_rel_path],
@@ -322,8 +328,8 @@ def main():
     nwbfile.add_acquisition(video)
     print(f"  Done | {time.time() - starting_time:.1f}s elapsed")
 
+    # === Add ONIX ephys clock ===
     clock_data = np.memmap(paths["clock"], dtype=np.uint64, mode="r")
-    # Add as a TimeSeries in acquisition so it's preserved for alignment
     ephys_clock = TimeSeries(
         name="onix_ephys_clock",
         data=H5DataIO(clock_data, compression=None, link_data=True),
@@ -334,10 +340,41 @@ def main():
     nwbfile.add_acquisition(ephys_clock)
     print(f"  Done | {time.time() - starting_time:.1f}s elapsed")
 
-    # === Write NWB file ===
-    print(f"Writing NWB to:\n  {nwb_path}")
-    with NWBHDF5IO(nwb_path, mode="w") as io:
-        io.write(nwbfile)
+    # === Load TTL CSVs ===
+    ttl_port_vals_path = paths["digital_inputs"]
+    ttl_timestamps_path = paths["digital_inputs_clock"]
+
+    ttl_ports = pd.read_csv(ttl_port_vals_path, header=None)
+    ttl_timestamps = pd.read_csv(ttl_timestamps_path, header=None)
+
+    ttl_port_binary = (ttl_ports[5] == " Pin5").to_numpy()
+    ttl_starts = ttl_timestamps[0][ttl_port_binary].astype(float).to_numpy() / digital_clock_hz
+    ttl_ends = ttl_timestamps[0][~ttl_port_binary].astype(float).to_numpy() / digital_clock_hz
+
+    # === Add TTL pulses ===
+    print("Adding TTL intervals...")
+    ttl_intervals = TimeIntervals(name="ttl_pulses", description="Start and stop times of TTL pulses from Port 5")
+    for start, stop in zip(ttl_starts, ttl_ends):
+        ttl_intervals.add_interval(start_time=float(start), stop_time=float(stop), tags=["TTL5"])
+    nwbfile.add_time_intervals(ttl_intervals)
+    print(f"  Done | {time.time() - starting_time:.1f}s elapsed")
+
+    # === Write NWB file (Zarr backend, parallel) ===
+    print(f"Writing NWB (Zarr) to:\n  {nwb_path}")
+    backend_configuration = get_default_backend_configuration(nwbfile=nwbfile, backend="zarr")
+    # Maximize parallel jobs for chunked dataset writes
+    for dataset_config in backend_configuration.dataset_configurations.values():
+        # Only ElectricalSeries-like datasets carry the `number_of_jobs` field;
+        # set it where available.
+        if hasattr(dataset_config, "number_of_jobs"):
+            dataset_config.number_of_jobs = -1
+
+    configure_and_write_nwbfile(
+        nwbfile=nwbfile,
+        output_filepath=nwb_path,
+        backend="zarr",
+        backend_configuration=backend_configuration,
+    )
     print(f"  Done | {time.time() - starting_time:.1f}s elapsed")
     print(f"\nNWB file saved to: {nwb_path}")
 
