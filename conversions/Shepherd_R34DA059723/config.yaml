@@ -31,4 +31,4 @@ timeseries:
     rate: "50000.0"
 
 deep-lab-cut:
-  config: 'example_data/DLC_config.yaml'  
+  config: 'example_data/DLC_config.yaml'
