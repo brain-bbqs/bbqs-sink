@@ -1,0 +1,34 @@
+session:
+  experimenter: ""
+  instiution: ""
+
+nwb_raw:
+  description: "Oromanual food handling in mice, raw data"
+  identifier: "1"
+  start_time: "2025-10-2113:45:00Z" # in this format: %Y-%m-%d%H:%M:%S%z, ex 2025-10-2113:45:00Z
+
+nwb_processed:
+  description: "Oromanual food handling in mice, processed data"
+  identifier: "2"
+  start_time: "2025-10-2113:45:00Z" # in this format: %Y-%m-%d%H:%M:%S%z, ex 2025-10-2113:45:00Z
+
+subject:
+  id: 42
+  species: "Homo sapiens"
+  age: "32"
+  sex: "M"
+
+timeseries:
+  digital:
+    description: "Row 1: TTL Camera exposure, false means on; Row 2: Trigger (unused)"
+    unit: "V"
+    start_time: "0.0"
+    rate: "50000.0"
+  analog:
+    description: "Row 1: Thermistor, Row 2: Sound'"
+    unit: "V"
+    start_time: "0.0"
+    rate: "50000.0"
+
+deep-lab-cut:
+  config: 'example_data/DLC_config.yaml'  
